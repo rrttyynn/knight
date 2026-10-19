@@ -7,7 +7,8 @@
 struct Board {
     u64 checkers, hash, hash_corrhist[3], colors[2], pieces[6];
     i32 trend;
-    u8 stm, castled, halfmove, enpassant = SQUARE_NONE, board[64];
+    i32 halfmove;
+    u8 stm, castled, enpassant = SQUARE_NONE, board[64];
 
     null edit(i32 square, i32 piece) {
         i32 p = board[square];
@@ -65,6 +66,19 @@ struct Board {
         return side != stm;
     }
 
+    void normalize_ep() {
+        if (enpassant == SQUARE_NONE) return;
+        u64 target = 1ull << enpassant;
+        u64 candidates = (stm ? nw(target) | ne(target) : sw(target) | se(target)) & pieces[PAWN] & colors[stm];
+        while (candidates) {
+            Board child = *this;
+            if (!child.make(move_make(LSB(candidates), enpassant))) return;
+            candidates &= candidates - 1;
+        }
+        hash ^= KEYS[PIECE_NONE][enpassant];
+        enpassant = SQUARE_NONE;
+    }
+
     u64 make(i32 move) {
         i32 from = move_from(move), to = move_to(move), piece = board[from];
         halfmove++;
@@ -74,8 +88,7 @@ struct Board {
 
         hash ^= KEYS[PIECE_NONE][enpassant];
         if (piece < WHITE_KNIGHT && to == enpassant)
-            edit(to ^ 8, PIECE_NONE),
-            hash ^= KEYS[PIECE_NONE][enpassant];
+            edit(to ^ 8, PIECE_NONE);
 
         enpassant = piece < WHITE_KNIGHT && abs(from - to) == 16 ? to ^ 8 : SQUARE_NONE;
         hash ^= KEYS[PIECE_NONE][enpassant];
@@ -99,6 +112,7 @@ struct Board {
 
         stm ^= 1;
         checkers = attackers(pieces[KING] & colors[stm]) & colors[!stm];
+        normalize_ep();
         return attackers(pieces[KING] & colors[!stm]) & colors[stm];
     }
 
@@ -106,7 +120,9 @@ struct Board {
         for (; targets;) {
             i32 to = LSB(targets);
             targets &= targets - 1;
-            *list++ = move_make(to - offset, to, (to < 8 || to > 55) * QUEEN);
+            if (to < 8 || to > 55)
+                for (i32 promo = KNIGHT; promo <= QUEEN; promo++) *list++ = move_make(to - offset, to, promo);
+            else *list++ = move_make(to - offset, to);
         }
     }
 
@@ -129,7 +145,7 @@ struct Board {
             targets = is_all ? ~colors[stm] : colors[!stm],
             pawns = pieces[PAWN] & colors[stm],
             pawns_push = (stm ? south(pawns) : north(pawns)) & ~occupied & (is_all ? ~0ull : 0xff000000000000ffULL),
-            pawns_targets = colors[!stm] | u64(enpassant < SQUARE_NONE) << enpassant;
+            pawns_targets = colors[!stm] | (enpassant < SQUARE_NONE ? 1ull << enpassant : 0);
 
         add_pawn_moves(list, pawns_push, stm ? -8 : 8);
         add_pawn_moves(list, (stm ? south(pawns_push & 0xff0000000000ULL) : north(pawns_push & 0xff0000ULL)) & ~occupied, stm ? -16 : 16);
@@ -235,7 +251,7 @@ struct Board {
         }
 
         i32 strong = eval < 0,
-            phase = phases[WHITE] + phases[BLACK],
+            phase = min(24, phases[WHITE] + phases[BLACK]),
             x = POPCNT(pieces[PAWN] & colors[strong]);
 
         i32 res = (
@@ -294,6 +310,7 @@ struct Board {
         halfmove = stoi(token);
         fen >> token;
         checkers = attackers(pieces[KING] & colors[stm]) & colors[!stm];
+        normalize_ep();
     }
 
     null startpos() {
@@ -304,5 +321,6 @@ struct Board {
             edit(i + A8, LAYOUT[i] * 2 + BLACK),
             edit(i + A2, WHITE_PAWN),
             edit(i + 48, BLACK_PAWN);
+        hash ^= KEYS[PIECE_NONE][castled];
     }
 } BOARD;

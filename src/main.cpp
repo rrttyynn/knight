@@ -9,112 +9,105 @@ u64 perft(Board& board, i32 depth) {
     i32 count = board.movegen(moves, TRUE);
     for (i32 i = 0; i < count; i++) {
         Board child = board;
-        if (child.make(moves[i])) continue;
-        nodes += perft(child, depth - 1);
+        if (!child.make(moves[i])) nodes += perft(child, depth - 1);
     }
     return nodes;
 }
 
-i32 main(i32 argc, char *argv[]) {
+void initialize() {
     mt19937_64 rng;
     for (i32 i = 0; i < 832; i++)
         KEYS[i / 64][i % 64] = rng(),
         DIAG[0][i % 64 ^ 56] = BSWAP(DIAG[1][i % 64] = ray(1ull << i % 64, 0, se) | ray(1ull << i % 64, 0, nw));
-
     for (i32 d = 1; d < 64; d++)
         for (i32 l = 1; l < 64; l++)
             LMR_TABLE[d][l] = log(d) * log(l) * 0.43 + 0.83;
-
     TTABLE = (TTEntry*)calloc(1ull << TT_BITS, sizeof(TTEntry));
+    BOARD.startpos();
+}
 
+i32 main(i32 argc, char *argv[]) {
+    initialize();
     if (argc > 2 && string(argv[1]) == "perft") {
-        BOARD.startpos();
-        u64 t1 = now();
-        u64 n = perft(BOARD, stoi(argv[2]));
-        u64 t2 = now();
-        cout << n << " nodes " << (n * 1000 / max(t2 - t1, u64(1))) << " nps" << endl;
+        if (argc > 3) { stringstream fen(argv[3]); BOARD.from_fen(fen); }
+        u64 t1 = now(), n = perft(BOARD, stoi(argv[2]));
+        osyncstream(cout) << n << " nodes " << n * 1000 / max(now() - t1, u64(1)) << " nps" << endl;
         free(TTABLE);
         return 0;
     }
-
-    string token;
-    if (!(cin >> token)) {
-        free(TTABLE);
-        return 0;
-    }
-
-    cout << "id name K8E\n";
-    cout << "id author AI\n";
-    cout << "option name Hash type spin default 8 min 1 max 64\n";
-    cout << "option name Threads type spin default 1 min 1 max 1\n";
-    cout << "uciok\n";
-
-    for (; getline(cin, token);) {
-        stringstream tokens(token);
-        tokens >> token;
-
-        if (token[0] == 'i')
-            cout << "readyok\n";
-        else if (token[0] == 'u') {
+    thread worker;
+    auto stop = [&] { STOP = TRUE; if (worker.joinable()) worker.join(); };
+    string line, cmd, token;
+    while (getline(cin, line)) {
+        stringstream tokens(line);
+        if (!(tokens >> cmd)) continue;
+        if (cmd == "uci")
+            osyncstream(cout) << "id name K8E\nid author AI\noption name Hash type spin default 8 min 1 max 64\noption name Threads type spin default 1 min 1 max 1\nuciok" << endl;
+        else if (cmd == "isready") osyncstream(cout) << "readyok" << endl;
+        else if (cmd == "stop") stop();
+        else if (cmd == "quit") break;
+        else if (cmd == "ucinewgame") {
+            stop();
             memset(TTABLE, 0, sizeof(TTEntry) * (1ull << TT_BITS));
             memset(&MAIN_THREAD, 0, sizeof(Thread));
             memset(EVAL_CACHE, 0, sizeof(EVAL_CACHE));
-        }
-        else if (token[0] == 's') {
+            VISITED.clear();
+            BOARD.startpos();
+        } else if (cmd == "setoption") {
+            stop();
             tokens >> token >> token;
-            if (token == "Hash") {
-                u64 tt_size;
-                tokens >> token >> tt_size;
-                tt_size *= 1024 * 1024 / sizeof(TTEntry);
-                TT_BITS = 63 - __builtin_clzll(tt_size);
+            i32 size;
+            if (token == "Hash" && tokens >> token >> size) {
+                TT_BITS = 17 + bit_width(uint32_t(clamp(size, 1, 64))) - 1;
                 TT_SHIFT = 64 - TT_BITS;
                 free(TTABLE);
                 TTABLE = (TTEntry*)calloc(1ull << TT_BITS, sizeof(TTEntry));
             }
-        }
-        else if (token[0] == 'p') {
-            VISITED_COUNT = 0;
+        } else if (cmd == "position") {
+            stop();
+            VISITED.clear();
             BOARD.startpos();
             tokens >> token;
-            if (token[0] == 'f')
-                BOARD.from_fen(tokens);
+            if (token == "fen") BOARD.from_fen(tokens);
             tokens >> token;
-
-            for (; tokens >> token;)
-                BEST_MOVE = move_make(token[0] + token[1] * 8 - 489, token[2] + token[3] * 8 - 489, token.size() > 4 ? token[4] % 35 * 5 % 6 : 0),
-                VISITED[VISITED_COUNT++] = BOARD.hash,
-                VISITED_COUNT *= BOARD.board[move_to(BEST_MOVE)] > BLACK_KING && BOARD.board[move_from(BEST_MOVE)] > BLACK_PAWN,
-                BOARD.make(BEST_MOVE);
-        }
-        else if (token[0] == 'g') {
-            u64 time = 1ull << 32, inc = 0;
-            bool is_movetime = false;
             while (tokens >> token) {
-                if (token == "wtime" && BOARD.stm == WHITE) tokens >> time;
-                if (token == "btime" && BOARD.stm == BLACK) tokens >> time;
-                if (token == "winc" && BOARD.stm == WHITE) tokens >> inc;
-                if (token == "binc" && BOARD.stm == BLACK) tokens >> inc;
-                if (token == "movetime") { tokens >> time; inc = 0; is_movetime = true; }
+                i32 moves[MAX_MOVE], count = BOARD.movegen(moves, TRUE);
+                for (i32 i = 0; i < count; i++) {
+                    if (move_text(moves[i]) != token) continue;
+                    Board child = BOARD;
+                    if (child.make(moves[i])) break;
+                    VISITED.push_back(BOARD.hash);
+                    BOARD = child;
+                    if (!BOARD.halfmove) VISITED.clear();
+                    break;
+                }
             }
-
-            STOP = FALSE;
+        } else if (cmd == "go") {
+            stop();
+            u64 time = 1ull << 40, inc = 0, movetime = 0;
+            bool fixed = false, infinite = false;
+            NODE_LIMIT = ~0ull;
+            DEPTH_LIMIT = 255;
+            while (tokens >> token) {
+                if (token == (BOARD.stm ? "btime" : "wtime")) tokens >> time;
+                else if (token == (BOARD.stm ? "binc" : "winc")) tokens >> inc;
+                else if (token == "movetime") { tokens >> movetime; fixed = true; }
+                else if (token == "depth") { tokens >> DEPTH_LIMIT; DEPTH_LIMIT = clamp(DEPTH_LIMIT, 1, 255); }
+                else if (token == "nodes") tokens >> NODE_LIMIT;
+                else if (token == "infinite") infinite = true;
+            }
             TIME_START = now();
-
-            if (is_movetime) {
-                TIME_SOFT = time > 10 ? time - 10 : time;
-                TIME_LIMIT = TIME_START + TIME_SOFT;
-            } else {
-                u64 safe_time = time > 20 ? time - 20 : time;
-                u64 move_time = safe_time / 22 + inc * 3 / 4;
-                TIME_SOFT = min(move_time, safe_time / 3);
-                TIME_LIMIT = TIME_START + min(safe_time * 3 / 5, max(TIME_SOFT * 3, safe_time / 4));
-            }
-
-            MAIN_THREAD.start(0);
+            u64 safe = time > 20 ? time - 20 : time;
+            TIME_SOFT = min(safe / 22 + inc * 3 / 4, safe / 3);
+            u64 hard = min(safe * 3 / 5, max(TIME_SOFT * 3, safe / 4));
+            if (fixed) hard = TIME_SOFT = movetime > 10 ? movetime - 10 : movetime;
+            if (infinite) hard = TIME_SOFT = 1ull << 60;
+            TIME_LIMIT = TIME_START + hard;
+            STOP = FALSE;
+            worker = thread([] { MAIN_THREAD.start(0); });
         }
-        else if (token[0] == 'q')
-            break;
     }
-
+    stop();
     free(TTABLE);
+    return 0;
 }

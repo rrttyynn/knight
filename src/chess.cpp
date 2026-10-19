@@ -40,9 +40,7 @@ using HTable = i16[12][64];
 #define A1 0
 #define B1 1
 #define C1 2
-#define D1 3
 #define E1 4
-#define F1 5
 #define G1 6
 #define H1 7
 #define A2 8
@@ -57,7 +55,6 @@ using HTable = i16[12][64];
 #define INF 32000
 #define DRAW 0
 
-#define CASTLED_NONE 0
 #define CASTLED_WK 1
 #define CASTLED_WQ 2
 #define CASTLED_BK 4
@@ -74,6 +71,8 @@ using HTable = i16[12][64];
 
 i32 TT_BITS = 20;
 i32 TT_SHIFT = 44;
+
+string move_text(i32 move);
 
 u64 now() {
     timespec t;
@@ -94,13 +93,15 @@ i32 move_promo(i32 move) { return move >> 12; }
 #define BSWAP __builtin_bswap64
 
 u64 BEST_MOVE,
-    VISITED_COUNT,
     TIME_START,
     TIME_SOFT,
     TIME_LIMIT,
     DIAG[2][64],
-    KEYS[13][65],
-    VISITED[STACK_SIZE];
+    KEYS[13][65];
+
+vector<u64> VISITED;
+u64 NODE_LIMIT = ~0ull;
+i32 DEPTH_LIMIT = 255;
 
 i32 LMR_TABLE[64][64];
 
@@ -149,3 +150,14 @@ struct EvalCacheEntry {
 } EVAL_CACHE[32768];
 
 atomic<i32> STOP;
+
+string move_text(i32 move) {
+    if (!move) return "0000";
+    string s = "a1a1";
+    s[0] += move_from(move) % 8;
+    s[1] += move_from(move) / 8;
+    s[2] += move_to(move) % 8;
+    s[3] += move_to(move) / 8;
+    if (move_promo(move)) s += " pnbrq"[move_promo(move) + 1];
+    return s;
+}

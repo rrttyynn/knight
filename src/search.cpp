@@ -36,15 +36,16 @@ struct Thread {
             noisy_list[MAX_MOVE];
 
         if (depth < 0) depth = 0;
-        if (!id && !(++nodes & 4095) && now() > TIME_LIMIT) STOP++;
+        ++nodes;
+        if (nodes > NODE_LIMIT || (!(nodes & 255) && now() >= TIME_LIMIT)) STOP = TRUE;
         if (STOP || ply >= MAX_PLY) return DRAW;
 
         if (ply) {
-            for (i32 i = 4; i <= ply; i += 2)
-                if (board.hash == visited[ply - i]) return DRAW;
-            for (i32 i = 0; i < VISITED_COUNT; i++)
-                if (board.hash == VISITED[i]) return DRAW;
-            if (board.halfmove > 99) return DRAW;
+            i32 repetitions = 0;
+            for (i32 i = 2; i <= ply; i += 2)
+                repetitions += board.hash == visited[ply - i];
+            for (u64 hash : VISITED) repetitions += hash == board.hash;
+            if (repetitions >= 2 || board.halfmove > 99 && !board.checkers) return DRAW;
 
             i32 r_alpha = max(alpha, ply - INF),
                 r_beta = min(beta, INF - ply - 1);
@@ -54,8 +55,12 @@ struct Thread {
         visited[ply] = board.hash;
 
         TTEntry tt = TTABLE[board.hash >> TT_SHIFT];
-        if (tt.key != i16(board.hash)) tt = {};
-        else if (!is_pv && !excluded && depth <= tt.depth && tt.bound != tt.score < beta)
+        if (!tt.key || tt.key != i16(board.hash)) tt = {};
+        else {
+            if (tt.score > WIN) tt.score -= ply;
+            if (tt.score < -WIN) tt.score += ply;
+        }
+        if (tt.key && !is_pv && !excluded && depth <= tt.depth && (tt.bound == BOUND_EXACT || tt.bound == BOUND_LOWER && tt.score >= beta || tt.bound == BOUND_UPPER && tt.score <= alpha))
             return tt.score;
 
         stack_eval[ply] = INF;
@@ -142,10 +147,10 @@ struct Thread {
 
             u64 nodes_start = nodes;
 
-            if (!depth && best > -WIN && move_scores[i] < 1000000) break;
-            if (ply && best > -WIN && quiet_count > 1 + depth * depth >> !is_improving && is_quiet && move != killers[ply][0] && move != killers[ply][1] && move != counter) continue;
+            if (!depth && !board.checkers && best > -WIN && move_scores[i] < 1000000) break;
+            if (ply && !board.checkers && best > -WIN && quiet_count > 1 + depth * depth >> !is_improving && is_quiet && move != killers[ply][0] && move != killers[ply][1] && move != counter) continue;
             if (ply && best > -WIN && depth < 10 && !board.checkers && move != killers[ply][0] && move != killers[ply][1] && move != counter && stack_eval[ply] + 76 * depth + (is_quiet ? move_scores[i] % 100000 : 0) / 27 + 89 < alpha && is_quiet) continue;
-            if (ply && best > -WIN && move_scores[i] < 1000000 && !board.see(move, -74 * depth)) continue;
+            if (ply && !board.checkers && best > -WIN && move_scores[i] < 1000000 && !board.see(move, -74 * depth)) continue;
 
             Board child = board;
             if (move == excluded || child.make(move)) continue;
@@ -245,7 +250,8 @@ struct Thread {
         if (!ply) root_legals = legals;
 
         if (!legals && board.checkers) return ply - INF;
-        if (!legals && depth) return DRAW;
+        if (!legals && depth) return excluded ? alpha : DRAW;
+        if (board.halfmove > 99) return DRAW;
 
         if (!board.checkers && (!bound || board.quiet(tt.move)) && bound != (best < stack_eval[ply])) {
             i32 bonus = clamp((best - stack_eval[ply]) * depth, -596, 596) * 7;
@@ -257,7 +263,7 @@ struct Thread {
         }
 
         if (!excluded)
-            TTABLE[board.hash >> TT_SHIFT] = { i16(board.hash), i16(tt.move), i16(best), u8(depth), u8(bound) };
+            TTABLE[board.hash >> TT_SHIFT] = { i16(board.hash), i16(tt.move), i16(best > WIN ? best + ply : best < -WIN ? best - ply : best), u8(depth), u8(bound) };
 
         return best;
     }
@@ -270,7 +276,14 @@ struct Thread {
         i32 score = 0, prev_best = 0, best_stability = 0;
         Board board = BOARD;
 
-        for (i32 depth = 1; depth < 256; depth++) {
+        BEST_MOVE = 0;
+        i32 moves[MAX_MOVE], count = board.movegen(moves, TRUE);
+        for (i32 i = 0; i < count; i++) {
+            Board child = board;
+            if (!child.make(moves[i])) { BEST_MOVE = moves[i]; break; }
+        }
+        if (!BEST_MOVE) { osyncstream(cout) << "bestmove 0000" << endl; return; }
+        for (i32 depth = 1; depth <= DEPTH_LIMIT && !STOP; depth++) {
             stack_conthist[0] = stack_conthist[1] = stack_conthist[2] = stack_conthist[3] = &conthist[WHITE_PAWN][B1];
 
             i32 delta = 9,
@@ -281,6 +294,7 @@ struct Thread {
             for (;;) {
                 score = search(board, alpha, beta, 0, max(depth - reduction, 1), TRUE);
 
+                if (STOP) break;
                 if (score <= alpha)
                     beta = (alpha + beta) / 2,
                     alpha = score - delta,
@@ -294,17 +308,19 @@ struct Thread {
                 board.trend = clamp(board.stm ? -score : score, -81, 81);
             }
 
+            if (STOP) break;
             if (BEST_MOVE == prev_best) best_stability++;
             else best_stability = 0;
             prev_best = BEST_MOVE;
 
             if (!id) {
-                cout << "info depth " << depth << " score ";
-                if (score >= WIN) cout << "mate " << i32((INF - score) / 2) << " ";
-                else if (score <= -WIN) cout << "mate " << i32((-INF - score) / 2) << " ";
-                else cout << "cp " << score << " ";
-                cout << "nodes " << nodes << " nps " << u64(nodes * 1000 / max(now() - TIME_START, u64(1))) << " pv ";
-                cout.put(97 + move_from(BEST_MOVE) % 8).put(49 + move_from(BEST_MOVE) / 8).put(97 + move_to(BEST_MOVE) % 8).put(49 + move_to(BEST_MOVE) / 8).put(move_promo(BEST_MOVE) ? 'q' : 32) << endl;
+                osyncstream output(cout);
+                output << "info depth " << depth << " score ";
+                if (score >= WIN) output << "mate " << i32((INF - score + 1) / 2) << " ";
+                else if (score <= -WIN) output << "mate " << i32((-INF - score) / 2) << " ";
+                else output << "cp " << score << " ";
+                output << "nodes " << nodes << " nps " << u64(nodes * 1000 / max(now() - TIME_START, u64(1))) << " pv ";
+                output << move_text(BEST_MOVE) << endl;
             }
 
             if (!id && depth >= 1 && root_legals == 1) break;
@@ -314,14 +330,11 @@ struct Thread {
             else if (!best_stability && depth > 5) factor *= 1.25;
 
             if (!id && now() > TIME_START + u64(TIME_SOFT * factor))
-                STOP++;
+                STOP = TRUE;
 
             if (STOP) break;
         }
 
-        if (!id)
-            STOP++,
-            cout << "bestmove ",
-            cout.put(97 + move_from(BEST_MOVE) % 8).put(49 + move_from(BEST_MOVE) / 8).put(97 + move_to(BEST_MOVE) % 8).put(49 + move_to(BEST_MOVE) / 8).put(move_promo(BEST_MOVE) ? 'q' : 32) << endl;
+        if (!id) osyncstream(cout) << "bestmove " << move_text(BEST_MOVE) << endl;
     }
 };
