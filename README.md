@@ -33,4 +33,4 @@ Requirements: Linux, `g++` (C++20), `python3`, and `xz-utils`.
 
 ## License
 
-MIT License
+Distributed under the **GNU General Public License v3.0 (GPL-3.0)**. See `LICENSE` for more information.
