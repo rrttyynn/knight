@@ -1,36 +1,50 @@
-# KNIGHT (K8E)
+# KNIGHT (K8E 2)
 
-**KNIGHT (K8E)** is a compact, high-performance UCI chess engine engineered to fit strictly within an **8,192-byte (8KB)** standalone executable.
+KNIGHT is a compact UCI chess engine with **one search worker** and a compressed release launcher strictly smaller than **8,192 bytes**. This iteration focuses on single-core move-generation throughput and search behavior. Strength is measured against the repository baseline; no absolute CCRL rating is claimed.
 
- Achieving **~3355 CCRL Blitz Elo** (+45 Elo over baseline in 5s+0.05s matches), it combines a fast bitboard core with modern search heuristics and an automated token-compacting LZMA2 build pipeline.
+## Build and run
 
-## Features
+Requirements: Linux, `g++` with C++20, `python3`, and `xz-utils`.
 
-- **< 8KB Self-Caching Binary**: Packed via custom lexical minification and LZMA2 compression (`pack.py`), caching the native binary under `~/.cache/k8e` for zero-latency startup.
-- **Full Chess & UCI Compliance**: Supports all promotions, normalized en-passant Zobrist hashing, 3-fold repetition, 50-move rule, and asynchronous UCI commands (`wtime`/`btime`, `movetime`, `depth`, `nodes`, `infinite`).
-- **Search Architecture**: PVS with Aspiration Windows, Singular Extensions, Precalculated LMR, Null-Move Pruning, RFP, Futility/SEE Pruning, and Mate Distance Pruning.
-- **Move Ordering & Caches**: Staged ordering (`TT` -> `Good Captures` -> `Killers` -> `Countermoves` -> `Quiets`), 3-ply Continuation History, Correction History, and a 32K-entry `EvalCache`.
-- **Dynamic Time Management**: Best-move stability scaling and instant forced-move resolution.
+```sh
+make
+./k8e              # Native engine, ready to use in a UCI GUI
+./k8e_release      # <8KB launcher, compiles and caches the native engine on first run
+./k8e perft 6
+```
 
-## Build & Run
+The release launcher needs the compiler on its first run and caches the result under `${XDG_CACHE_HOME:-$HOME/.cache}/k8e`. Its 8KB limit applies to the compressed launcher, not the cached native executable. The native build uses `-march=native`, selecting the attack path for the build machine. The BMI2 path adds about 2.25 MiB of slider lookup storage at runtime. The UCI `Threads` option is fixed to 1; a separate input thread handles `stop` while the single search worker thinks. `Hash` supports 1–64 MB, default 8 MB.
 
-Requirements: Linux, `g++` (C++20), `python3`, and `xz-utils`.
+## Engine
 
-    # Build both native (k8e) and <8KB release (k8e_release)
-    make
+- Bitboards with precomputed knight/king attacks and BMI2/PEXT lookup tables for sliding pieces. Builds without BMI2 use hyperbola and a small rank-attack table.
+- PVS, aspiration windows, singular extensions, LMR, null-move pruning, reverse futility, SEE pruning.
+- TT/capture/killer/countermove ordering, continuation and correction history, and an evaluation cache.
+- Tapered handcrafted evaluation with mobility, king safety, threats, pawn structure and passed pawns.
+- Promotions, castling, normalized en-passant hashing, repetition and 50-move handling.
+- UCI `wtime`/`btime`, increments, `movetime`, `depth`, `nodes`, `infinite` and asynchronous `stop`.
 
-    # Run UCI engine
-    ./k8e_release
+## Validation and reproducible matches
 
-    # Run built-in Perft benchmark
-    ./k8e perft 6
+```sh
+python3 -m pip install -r tests/requirements.txt
+make test
 
-## Credits
+# Keep a separately compiled checkout of the baseline as ./baseline.
+python3 tests/bench.py ./baseline ./k8e
+python3 tests/bench.py ./baseline ./k8e --movetime 0.15
+python3 tests/match.py ./k8e ./baseline --pairs 100 --movetime 0.04 --out timed
+python3 tests/match.py ./k8e ./baseline --pairs 30 --nodes 20000 --out nodes
+```
 
-- **Base Architecture**: Derived from [c4ke](https://github.com/ciekals/c4ke) by Ciekals.
-- **Search Heuristics**: Inspired by [Ethereal](https://github.com/AndyGrant/Ethereal) by Andrew Grant.
-- **Engineering & Optimization**: Developed by rrttyynn.
+The tests cover attack-table equivalence against independent rays, incremental hashes, evaluation/SEE immutability, standard and random perft positions, terminal positions, UCI interruption and packed/native search equivalence. The match runner pins itself and both engines to one available CPU, uses equal 8 MB hash, swaps colors for every opening, validates all moves with `python-chess`, and saves PGN plus a JSON summary. Its confidence interval groups reverse-color games into pairs. `--movetime 0.04` requests 40 ms per move; both versions reserve 10 ms internally.
 
-## License
+Performance and match evidence for this iteration are recorded in [the validation report](tests/results/REPORT.md). Short-control head-to-head results describe those conditions and do not establish a tournament or CCRL rating.
 
-Distributed under the **GNU General Public License v3.0 (GPL-3.0)**. See `LICENSE` for more information.
+## Credits and license
+
+- Base architecture: [c4ke](https://github.com/ciekals/c4ke) by Ciekals.
+- Search inspiration: [Ethereal](https://github.com/AndyGrant/Ethereal) by Andrew Grant.
+- Engine engineering: rrttyynn.
+
+GNU General Public License v3.0; see [LICENSE](LICENSE).

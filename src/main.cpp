@@ -22,6 +22,25 @@ void initialize() {
     for (i32 d = 1; d < 64; d++)
         for (i32 l = 1; l < 64; l++)
             LMR_TABLE[d][l] = log(d) * log(l) * 0.43 + 0.83;
+    for (i32 s = 0; s < 64; s++) {
+        u64 m = 1ull << s;
+        LEAPER[0][s] = (m << 6 | m >> 10) & 0x3f3f3f3f3f3f3f3fULL | (m << 10 | m >> 6) & 0xfcfcfcfcfcfcfcfcULL | (m << 17 | m >> 15) & ~0x0101010101010101ULL | (m << 15 | m >> 17) & ~0x8080808080808080ULL;
+        LEAPER[1][s] = north(m) | south(m) | east(m) | west(m) | ne(m) | nw(m) | se(m) | sw(m);
+    }
+    for (i32 f = 0; f < 8; f++)
+        for (i32 o = 0; o < 256; o++)
+            RANK_ATTACKS[f][o] = ray(1ull << f, o, east) | ray(1ull << f, o, west);
+#ifdef __BMI2__
+    for (i32 s = 0; s < 64; s++)
+        for (i32 t = 0; t < 2; t++) {
+            u64 edges = (0xff000000000000ffULL & ~(255ull << (s / 8 * 8))) | (0x8181818181818181ULL & ~(0x0101010101010101ULL << (s % 8)));
+            u64 mask = SLIDER_MASKS[t][s] = sliding(1ull << s, 0, BISHOP + t) & ~edges, subset = 0;
+            do {
+                SLIDER_ATTACKS[s][t * 512 + _pext_u64(subset, mask)] = sliding(1ull << s, subset, BISHOP + t);
+                subset = (subset - mask) & mask;
+            } while (subset);
+        }
+#endif
     TTABLE = (TTEntry*)calloc(1ull << TT_BITS, sizeof(TTEntry));
     BOARD.startpos();
 }
@@ -42,7 +61,7 @@ i32 main(i32 argc, char *argv[]) {
         stringstream tokens(line);
         if (!(tokens >> cmd)) continue;
         if (cmd == "uci")
-            osyncstream(cout) << "id name K8E\nid author AI\noption name Hash type spin default 8 min 1 max 64\noption name Threads type spin default 1 min 1 max 1\nuciok" << endl;
+            osyncstream(cout) << "id name K8E 2\nid author AI\noption name Hash type spin default 8 min 1 max 64\noption name Threads type spin default 1 min 1 max 1\nuciok" << endl;
         else if (cmd == "isready") osyncstream(cout) << "readyok" << endl;
         else if (cmd == "stop") stop();
         else if (cmd == "quit") break;

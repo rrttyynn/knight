@@ -1,4 +1,7 @@
 #include <bits/stdc++.h>
+#ifdef __BMI2__
+#include <immintrin.h>
+#endif
 
 using namespace std;
 
@@ -104,6 +107,12 @@ u64 NODE_LIMIT = ~0ull;
 i32 DEPTH_LIMIT = 255;
 
 i32 LMR_TABLE[64][64];
+// Tiny read-only attack tables keep the hot path independent of ray length.
+u64 LEAPER[2][64];
+u8 RANK_ATTACKS[8][256];
+#ifdef __BMI2__
+u64 SLIDER_MASKS[2][64], SLIDER_ATTACKS[64][4608];
+#endif
 
 u64 north(u64 b) { return b << 8; }
 u64 south(u64 b) { return b >> 8; }
@@ -129,14 +138,27 @@ u64 hyperbola(u64 mask, u64 occupied, u64 line) {
     return line & ((occupied & line) - mask ^ BSWAP(BSWAP(occupied & line) - BSWAP(mask)));
 }
 
+u64 sliding(u64 mask, u64 occupied, i32 type) {
+    i32 square = LSB(mask);
+    u64 moves = 0;
+    if (type != ROOK)
+        moves = hyperbola(mask, occupied, DIAG[0][square]) | hyperbola(mask, occupied, DIAG[1][square]);
+    if (type != BISHOP)
+        moves |= hyperbola(mask, occupied, mask ^ 0x0101010101010101ULL << square % 8) | (u64(RANK_ATTACKS[square % 8][occupied >> (square / 8 * 8) & 255]) << (square / 8 * 8));
+    return moves;
+}
+
 u64 attack(u64 mask, u64 occupied, i32 type) {
-    if (type < BISHOP)
-        return (mask << 6 | mask >> 10) & 0x3f3f3f3f3f3f3f3fULL | (mask << 10 | mask >> 6) & 0xfcfcfcfcfcfcfcfcULL | (mask << 17 | mask >> 15) & ~0x0101010101010101ULL | (mask << 15 | mask >> 17) & ~0x8080808080808080ULL;
-    if (type > QUEEN)
-        return mask << 8 | mask >> 8 | (mask >> 1 | mask >> 9 | mask << 7) & ~0x8080808080808080ULL | (mask << 1 | mask << 9 | mask >> 7) & ~0x0101010101010101ULL;
-    return
-        (type != ROOK) * (hyperbola(mask, occupied, DIAG[0][LSB(mask)]) | hyperbola(mask, occupied, DIAG[1][LSB(mask)])) |
-        (type > BISHOP) * (hyperbola(mask, occupied, mask ^ 0x0101010101010101ULL << LSB(mask) % 8) | ray(mask, occupied, east) | ray(mask, occupied, west));
+    i32 square = LSB(mask);
+    if (type < BISHOP || type > QUEEN) return LEAPER[type > QUEEN][square];
+#ifdef __BMI2__
+    u64 moves = 0;
+    if (type != ROOK) moves = SLIDER_ATTACKS[square][_pext_u64(occupied, SLIDER_MASKS[0][square])];
+    if (type != BISHOP) moves |= SLIDER_ATTACKS[square][512 + _pext_u64(occupied, SLIDER_MASKS[1][square])];
+    return moves;
+#else
+    return sliding(mask, occupied, type);
+#endif
 }
 
 struct TTEntry {

@@ -1,0 +1,56 @@
+[
+  {
+    "engine": "baseline",
+    "positions": 12,
+    "node_budget": null,
+    "movetime": 0.15,
+    "median_budget_nps": null,
+    "runs": [
+      {
+        "seconds": 1.455241069999829,
+        "completed_iteration_nodes": 1292277,
+        "budget_nps": null,
+        "mean_depth": 13.333333333333334
+      },
+      {
+        "seconds": 1.5343138249997992,
+        "completed_iteration_nodes": 1174163,
+        "budget_nps": null,
+        "mean_depth": 13.25
+      },
+      {
+        "seconds": 1.4841374639995593,
+        "completed_iteration_nodes": 1286361,
+        "budget_nps": null,
+        "mean_depth": 13.333333333333334
+      }
+    ]
+  },
+  {
+    "engine": "K8E 2",
+    "positions": 12,
+    "node_budget": null,
+    "movetime": 0.15,
+    "median_budget_nps": null,
+    "runs": [
+      {
+        "seconds": 1.5279851450002297,
+        "completed_iteration_nodes": 1651380,
+        "budget_nps": null,
+        "mean_depth": 13.75
+      },
+      {
+        "seconds": 1.5323660539997945,
+        "completed_iteration_nodes": 1649291,
+        "budget_nps": null,
+        "mean_depth": 13.75
+      },
+      {
+        "seconds": 1.5286631409996971,
+        "completed_iteration_nodes": 1719424,
+        "budget_nps": null,
+        "mean_depth": 13.75
+      }
+    ]
+  }
+]

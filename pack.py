@@ -7,7 +7,8 @@ root = Path(__file__).resolve().parent
 parts = [re.sub(r'^#include "[^"\n]+"\n', '', (root / 'src' / name).read_text(), flags=re.M) for name in ('chess.cpp', 'eval.cpp', 'board.cpp', 'search.cpp', 'main.cpp')]
 source = '\n'.join(parts)
 lexer = re.compile(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|//[^\n]*|/\*[\s\S]*?\*/|[A-Za-z_][A-Za-z_0-9]*|(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?[A-Za-z_0-9]*|>>=|<<=|->\*|\.\.\.|::|->|\+\+|--|<<|>>|<=|>=|==|!=|&&|\|\||\+=|-=|\*=|/=|%=|&=|\|=|\^=|[^\s]')
-names = 'move_make move_from move_to move_promo move_text update_history normalize_ep add_pawn_moves add_moves hash_corrhist stack_conthist stack_eval cutoff_count prev_move nodes_table root_legals is_improving quiet_count noisy_count move_scores move_list quiet_list noisy_list depth_next nodes_start singular_beta raw_hist hist_term prev_best best_stability candidates enpassant castled checkers attackers'.split()
+names = 'move_make move_from move_to move_promo move_text update_history normalize_ep add_pawn_moves add_moves hash_corrhist stack_conthist stack_eval cutoff_count prev_move nodes_table root_legals is_improving quiet_count noisy_count move_scores move_list quiet_list noisy_list depth_next nodes_start singular_beta raw_hist hist_term prev_best best_stability candidates enpassant castled checkers attackers LEAPER RANK_ATTACKS TIME_START TIME_LIMIT TIME_SOFT LMR_TABLE get_data PIECE_NONE SQUARE_NONE MAX_PLY MAX_MOVE'.split()
+names = list(dict.fromkeys(names + re.findall(r'^#define\s+([A-Za-z_]\w*)', source, flags=re.M) + 'SLIDER_MASKS SLIDER_ATTACKS sliding edges subset square occupied colors pieces eval score depth alpha beta'.split()))
 aliases = {name: 'z' + str(i) for i, name in enumerate(names)}
 assert not set(aliases.values()) & set(lexer.findall(source))
 
