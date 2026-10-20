@@ -57,7 +57,7 @@ def main():
     p.add_argument('--movetime', type=float, default=0.05)
     p.add_argument('--seed', type=int, default=20261020)
     p.add_argument('--start-pair', type=int, default=0)
-    p.add_argument('--out', default='match-results')
+    p.add_argument('--out', default='tests/results/match')
     args = p.parse_args()
     if hasattr(os, 'sched_getaffinity'):
         os.sched_setaffinity(0, {min(os.sched_getaffinity(0))})
@@ -69,6 +69,7 @@ def main():
     scores = []
     pairs = []
     started = time.monotonic()
+    Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     pgn = open(args.out + '.pgn', 'w')
     try:
         for pair, opening in enumerate(openings(args.start_pair + args.pairs, args.seed)):
