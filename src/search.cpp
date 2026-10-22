@@ -47,14 +47,15 @@ struct Thread {
             for (u64 hash : VISITED) repetitions += hash == board.hash;
             if (repetitions >= 2 || board.halfmove > 99 && !board.checkers) return DRAW;
 
-            i32 r_alpha = max(alpha, ply - INF),
-                r_beta = min(beta, INF - ply - 1);
-            if (r_alpha >= r_beta) return r_alpha;
+            alpha = max(alpha, ply - INF);
+            beta = min(beta, INF - ply - 1);
+            if (alpha >= beta) return alpha;
         }
 
         visited[ply] = board.hash;
 
         TTEntry tt = TTABLE[board.hash >> TT_SHIFT];
+        tt.bound &= 3;
         if (!tt.key || tt.key != i16(board.hash)) tt = {};
         else {
             if (tt.score > WIN) tt.score -= ply;
@@ -80,16 +81,16 @@ struct Thread {
 
             is_improving = ply > 1 && stack_eval[ply] > stack_eval[ply - 2];
 
-            if (!is_pv && !excluded && depth < 6 && stack_eval[ply] + 159 * depth < alpha)
+            if (!is_pv && !excluded && depth < 6 && stack_eval[ply] + RAZOR_MARGIN * depth < alpha)
                 depth = 0;
 
             if (!depth && (alpha = max(alpha, best = eval)) >= beta)
                 return eval;
 
-            if (!is_pv && !excluded && depth && depth < 9 && eval < WIN && eval > beta + 70 * depth - 70 * is_improving)
+            if (!is_pv && !excluded && depth && depth < 9 && eval < WIN && eval > beta + RFP_MARGIN * (depth - is_improving))
                 return (eval + beta) / 2;
 
-            if (!is_pv && !excluded && depth > 2 && eval > beta + 28 && board.colors[board.stm] & ~board.pieces[PAWN] & ~board.pieces[KING]) {
+            if (!is_pv && !excluded && depth > 2 && eval > beta + NULL_MARGIN && board.colors[board.stm] & ~board.pieces[PAWN] & ~board.pieces[KING]) {
                 Board child = board;
                 child.stm ^= 1;
                 child.hash ^= KEYS[PIECE_NONE][0];
@@ -98,7 +99,7 @@ struct Thread {
                 stack_conthist[ply + 4] = conthist[WHITE_PAWN];
                 prev_move[ply] = 0;
 
-                score = -search(child, -beta, -alpha, ply + 1, depth - 4 - depth / 3 - min(2, (eval - beta) / 200));
+                score = -search(child, -beta, -alpha, ply + 1, depth - NULL_BASE - depth / NULL_DIVISOR - min(2, (eval - beta) / NULL_EVAL_DIVISOR));
                 if (score >= beta) return score < WIN ? score : beta;
             }
         }
@@ -149,8 +150,8 @@ struct Thread {
 
             if (!depth && !board.checkers && best > -WIN && move_scores[i] < 1000000) break;
             if (ply && !board.checkers && best > -WIN && quiet_count > 1 + depth * depth >> !is_improving && is_quiet && move != killers[ply][0] && move != killers[ply][1] && move != counter) continue;
-            if (ply && best > -WIN && depth < 10 && !board.checkers && move != killers[ply][0] && move != killers[ply][1] && move != counter && stack_eval[ply] + 76 * depth + (is_quiet ? move_scores[i] % 100000 : 0) / 27 + 89 < alpha && is_quiet) continue;
-            if (ply && !board.checkers && best > -WIN && move_scores[i] < 1000000 && !board.see(move, -74 * depth)) continue;
+            if (ply && best > -WIN && depth < 10 && !board.checkers && move != killers[ply][0] && move != killers[ply][1] && move != counter && stack_eval[ply] + FUTILITY_MARGIN * depth + (is_quiet ? move_scores[i] % 100000 : 0) / 27 + FUTILITY_OFFSET < alpha && is_quiet) continue;
+            if (ply && !board.checkers && best > -WIN && move_scores[i] < 1000000 && !board.see(move, -SEE_MARGIN * depth)) continue;
 
             Board child = board;
             if (move == excluded || child.make(move)) continue;
@@ -263,13 +264,14 @@ struct Thread {
         }
 
         if (!excluded)
-            TTABLE[board.hash >> TT_SHIFT] = { i16(board.hash), i16(tt.move), i16(best > WIN ? best + ply : best < -WIN ? best - ply : best), u8(depth), u8(bound) };
+            tt_save(board.hash, tt.move, best > WIN ? best + ply : best < -WIN ? best - ply : best, depth, bound);
 
         return best;
     }
 
     null start(i32 ID) {
         id = ID;
+        TT_GENERATION += 4;
         nodes = 0;
         root_legals = 0;
         memset(nodes_table, 0, sizeof(nodes_table));
@@ -286,7 +288,7 @@ struct Thread {
         for (i32 depth = 1; depth <= DEPTH_LIMIT && !STOP; depth++) {
             stack_conthist[0] = stack_conthist[1] = stack_conthist[2] = stack_conthist[3] = &conthist[WHITE_PAWN][B1];
 
-            i32 delta = 9,
+            i32 delta = ASPIRATION,
                 alpha = score - delta,
                 beta = score + delta,
                 reduction = 0;
@@ -305,6 +307,7 @@ struct Thread {
                 else
                     break;
 
+                delta = min(INF, delta + delta / 2 + 1);
                 board.trend = clamp(board.stm ? -score : score, -81, 81);
             }
 

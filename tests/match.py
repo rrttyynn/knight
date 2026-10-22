@@ -41,11 +41,35 @@ def openings(pairs, seed):
         for san in LINES[i % len(LINES)].split():
             b.push_san(san)
         # Seeded variations prevent repeats after the first pass through the book.
-        for _ in range(2 * (i // len(LINES))):
+        for _ in range(min(12, 2 * (i // len(LINES)))):
             if b.is_game_over():
                 break
             b.push(rng.choice(list(b.legal_moves)))
         yield b
+
+
+def play_game(engines, opening, color, limit, round_number=1):
+    """Return the candidate's score and PGN, checking every engine move."""
+    board = opening.copy()
+    game = chess.pgn.Game()
+    game.setup(board)
+    game.headers.update(Event='K8E single-core regression', Round=str(round_number),
+                        White='candidate' if color else 'baseline',
+                        Black='baseline' if color else 'candidate')
+    node = game
+    token = object()
+    while not board.is_game_over(claim_draw=True) and board.ply() < 600:
+        index = 0 if board.turn == color else 1
+        result = engines[index].play(board, limit, game=token)
+        if result.move not in board.legal_moves:
+            raise RuntimeError(f'Illegal move: engine={index}, {result.move}, {board.fen()}')
+        board.push(result.move)
+        node = node.add_variation(result.move)
+    outcome = board.outcome(claim_draw=True)
+    game.headers['Result'] = board.result(claim_draw=True) if outcome else '1/2-1/2'
+    game.headers['Termination'] = outcome.termination.name if outcome else '600-ply limit'
+    score = 0.5 if not outcome or outcome.winner is None else float(outcome.winner == color)
+    return score, game
 
 
 def main():
@@ -77,26 +101,7 @@ def main():
                 continue
             pair_score = 0
             for color in (chess.WHITE, chess.BLACK):
-                board = opening.copy()
-                game = chess.pgn.Game()
-                game.setup(board)
-                game.headers.update(Event='K8E single-core regression', Round=str(pair + 1),
-                                    White='candidate' if color else 'baseline',
-                                    Black='baseline' if color else 'candidate')
-                node = game
-                token = object()
-                while not board.is_game_over(claim_draw=True) and board.ply() < 600:
-                    index = 0 if board.turn == color else 1
-                    result = engines[index].play(board, limit, game=token)
-                    if result.move not in board.legal_moves:
-                        raise RuntimeError(f'Illegal move: engine={index}, {result.move}, {board.fen()}')
-                    board.push(result.move)
-                    node = node.add_variation(result.move)
-                outcome = board.outcome(claim_draw=True)
-                result = board.result(claim_draw=True) if outcome else '1/2-1/2'
-                game.headers['Result'] = result
-                game.headers['Termination'] = outcome.termination.name if outcome else '600-ply limit'
-                score = 0.5 if not outcome or outcome.winner is None else float(outcome.winner == color)
+                score, game = play_game(engines, opening, color, limit, pair + 1)
                 scores.append(score)
                 pair_score += score
                 print(game, file=pgn, end='\n\n', flush=True)
@@ -108,6 +113,7 @@ def main():
             rates = [x / 2 for x in pairs]
             se = (sum((x - mean)**2 for x in rates) / (len(rates) - 1) / len(rates))**0.5 if len(rates) > 1 else 0.5
             stats = dict(games=n, wins=w, draws=d, losses=l, score=mean,
+                         requested_pairs=args.pairs, complete=len(pairs) == args.pairs,
                          score_ci95=[max(0, mean - 1.96*se), min(1, mean + 1.96*se)],
                          elo=400*math.log10(mean/(1-mean)) if 0 < mean < 1 else None,
                          pair_scores=pairs, seed=args.seed, start_pair=args.start_pair, nodes=args.nodes,

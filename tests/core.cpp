@@ -8,6 +8,48 @@ void require(bool condition, const char* what) {
 
 int main() {
     initialize();
+    require(sizeof(TTEntry) == 8, "TT entries must retain the advertised Hash capacity");
+    u64 key = (5ull << TT_SHIFT) | 1, collision = key + 1;
+    TT_GENERATION = 252;
+    tt_save(key, 123, 321, 24, BOUND_LOWER);
+    tt_save(collision, 456, -200, 0, BOUND_EXACT);
+    require(TTABLE[5].key == i16(key) && TTABLE[5].score == 321,
+            "shallow collision displaced a fresh deep TT result");
+    tt_save(key, 456, 12, 0, BOUND_UPPER);
+    require(TTABLE[5].score == 321 && TTABLE[5].move == 456,
+            "same-position move refresh lost the deep TT result");
+    tt_save(key, 0, 400, 25, BOUND_EXACT);
+    require(TTABLE[5].move == 456 && TTABLE[5].score == 400,
+            "TT score refresh discarded the existing move");
+    TT_GENERATION = 0;
+    tt_save(collision, 789, 55, 0, BOUND_UPPER);
+    require(TTABLE[5].key == i16(key), "TT generation wrap treated a recent entry as ancient");
+    TT_GENERATION = 24;
+    tt_save(collision, 789, 55, 0, BOUND_UPPER);
+    require(TTABLE[5].key == i16(collision), "old deep TT entries cannot be replaced");
+    TIME_LIMIT = NODE_LIMIT = ~0ull;
+    STOP = FALSE;
+    tt_save(BOARD.hash, 0, 321, 30, BOUND_LOWER);
+    require(MAIN_THREAD.search(BOARD, 0, 100, 0, 1) == 321,
+            "TT generation bits corrupted the lower-bound cutoff");
+    tt_save(BOARD.hash, 0, INF - 2, 31, BOUND_EXACT);
+    require(MAIN_THREAD.search(BOARD, -INF, INF, 6, 1) == INF - 8,
+            "positive mate distance changed across TT plies");
+    tt_save(BOARD.hash, 0, 2 - INF, 32, BOUND_EXACT);
+    require(MAIN_THREAD.search(BOARD, -INF, INF, 6, 1) == 8 - INF,
+            "negative mate distance changed across TT plies");
+    Board mate;
+    stringstream mate_fen("7k/5K2/6Q1/8/8/8/8/8 w - - 0 1");
+    mate.from_fen(mate_fen);
+    tt_save(mate.hash, 0, INF - 1, 32, BOUND_LOWER);
+    u64 before_nodes = MAIN_THREAD.nodes;
+    for (auto& ptr : MAIN_THREAD.stack_conthist)
+        ptr = &MAIN_THREAD.conthist[WHITE_PAWN][B1];
+    require(MAIN_THREAD.search(mate, -INF, INF, 20, 1) == INF - 21
+            && MAIN_THREAD.nodes == before_nodes + 1,
+            "mate-distance window did not enable the proven TT cutoff");
+    memset(TTABLE, 0, sizeof(TTEntry) * (1ull << TT_BITS));
+    TT_GENERATION = 0;
     mt19937_64 rng(20261020);
     // Independent directional rays cover blockers at edges and on the source.
     for (int n = 0; n < 10000; n++) {
@@ -60,5 +102,5 @@ int main() {
         require(!memcmp(board.hash_corrhist, rebuilt.hash_corrhist, sizeof(board.hash_corrhist)), "correction hash mismatch");
     }
     free(TTABLE);
-    cout << "core: attack rays, evaluation/SEE immutability and incremental hashes passed" << endl;
+    cout << "core: TT replacement/mate distance, attack rays, evaluation/SEE immutability and incremental hashes passed" << endl;
 }

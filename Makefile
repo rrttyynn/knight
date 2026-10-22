@@ -3,11 +3,11 @@ CXXFLAGS = -O3 -std=c++20 -march=native -DNDEBUG -fno-rtti -pthread
 
 all: k8e k8e_release
 
-k8e: src/*.cpp
+k8e: src/*.cpp src/*.h
 	$(CXX) $(CXXFLAGS) src/main.cpp -o $@
 	strip --strip-all $@
 
-k8e_release: src/*.cpp compressor.sh pack.py
+k8e_release: src/*.cpp src/*.h compressor.sh pack.py
 	sh compressor.sh
 
 release: k8e_release
@@ -22,6 +22,7 @@ test: k8e k8e_release
 	python3 tests/regression.py ./build/k8e_generic ./k8e
 	python3 tests/regression.py ./k8e
 	python3 tests/regression.py ./k8e_release ./k8e
+	python3 tests/tuning.py
 
 clean:
 	rm -rf k8e k8e_release build

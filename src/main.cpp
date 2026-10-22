@@ -21,7 +21,7 @@ void initialize() {
         DIAG[0][i % 64 ^ 56] = BSWAP(DIAG[1][i % 64] = ray(1ull << i % 64, 0, se) | ray(1ull << i % 64, 0, nw));
     for (i32 d = 1; d < 64; d++)
         for (i32 l = 1; l < 64; l++)
-            LMR_TABLE[d][l] = log(d) * log(l) * 0.43 + 0.83;
+            LMR_TABLE[d][l] = log(d) * log(l) * LMR_SCALE + LMR_OFFSET;
     for (i32 s = 0; s < 64; s++) {
         u64 m = 1ull << s;
         LEAPER[0][s] = (m << 6 | m >> 10) & 0x3f3f3f3f3f3f3f3fULL | (m << 10 | m >> 6) & 0xfcfcfcfcfcfcfcfcULL | (m << 17 | m >> 15) & ~0x0101010101010101ULL | (m << 15 | m >> 17) & ~0x8080808080808080ULL;

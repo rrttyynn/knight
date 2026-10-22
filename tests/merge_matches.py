@@ -14,6 +14,7 @@ rows.sort(key=lambda x: x[0]['start_pair'])
 expected = 0
 pairs = []
 for row, _ in rows:
+    assert row.get('complete', True), 'A shard has not finished its requested pairs'
     assert row['start_pair'] == expected, 'Shards overlap or leave a gap'
     assert row['games'] == 2 * len(row['pair_scores'])
     for key in ['seed', 'nodes', 'movetime', 'threads', 'hash_mb']:

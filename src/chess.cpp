@@ -1,4 +1,5 @@
 #include <bits/stdc++.h>
+#include "params.h"
 #ifdef __BMI2__
 #include <immintrin.h>
 #endif
@@ -165,6 +166,18 @@ struct TTEntry {
     i16 key, move, score;
     u8 depth, bound;
 } *TTABLE;
+
+u8 TT_GENERATION;
+
+// The upper six bound bits hold the generation; entries stay eight bytes.
+void tt_save(u64 hash, i32 move, i32 score, i32 depth, i32 bound) {
+    TTEntry& entry = TTABLE[hash >> TT_SHIFT];
+    i32 age = u8(TT_GENERATION - (entry.bound & 252)) / 4;
+    if (!entry.key || depth + age * 4 + (bound == BOUND_EXACT) * 4 >= entry.depth) {
+        if (!move && entry.key == i16(hash)) move = entry.move;
+        entry = {i16(hash), i16(move), i16(score), u8(depth), u8(TT_GENERATION | bound)};
+    } else if (entry.key == i16(hash) && move) entry.move = move;
+}
 
 struct EvalCacheEntry {
     u64 key;

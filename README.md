@@ -20,6 +20,7 @@ The release launcher needs the compiler on its first run and caches the result u
 - Bitboards with precomputed knight/king attacks and BMI2/PEXT lookup tables for sliding pieces. Builds without BMI2 use hyperbola and a small rank-attack table.
 - PVS, aspiration windows, singular extensions, LMR, null-move pruning, reverse futility, SEE pruning.
 - TT/capture/killer/countermove ordering, continuation and correction history, and an evaluation cache.
+- Mate-distance window bounds, widening aspiration re-searches, and depth/bound/age-aware TT replacement without increasing the eight-byte entry size.
 - Tapered handcrafted evaluation with mobility, king safety, threats, pawn structure and passed pawns.
 - Promotions, castling, normalized en-passant hashing, repetition and 50-move handling.
 - UCI `wtime`/`btime`, increments, `movetime`, `depth`, `nodes`, `infinite` and asynchronous `stop`.
@@ -40,6 +41,13 @@ python3 tests/match.py ./k8e ./baseline --pairs 30 --nodes 20000 --out tests/res
 The tests cover attack-table equivalence against independent rays, incremental hashes, evaluation/SEE immutability, standard and random perft positions, terminal positions, UCI interruption and packed/native search equivalence. The match runner pins itself and both engines to one available CPU, uses equal 8 MB hash, swaps colors for every opening, validates all moves with `python-chess`, and saves PGN plus a JSON summary. Its confidence interval groups reverse-color games into pairs. `--movetime 0.04` requests 40 ms per move; both versions reserve 10 ms internally.
 
 Generated reports and PGN files stay in the ignored `tests/results/` directory.
+
+## Offline parameter tuning
+
+[The tuning guide](tools/TUNING.md) covers PGN collection, game-grouped Texel
+evaluation fitting and paired-game SPSA search tuning. Only the offline tuning
+binary exposes mutable weights; release builds use constants and keep the same
+single-worker and compressed-size constraints.
 
 ## Credits and license
 
