@@ -7,8 +7,8 @@ k8e: src/*.cpp
 	$(CXX) $(CXXFLAGS) src/main.cpp -o $@
 	strip --strip-all $@
 
-k8e_release: src/*.cpp compressor.sh pack.py
-	sh compressor.sh
+k8e_release: src/*.cpp pack.py
+	python3 pack.py
 
 release: k8e_release
 
