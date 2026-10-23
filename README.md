@@ -1,21 +1,21 @@
 # KNIGHT
 
-单搜索线程 UCI 国际象棋引擎，压缩启动器小于 8,192 字节。
+UCI chess engine with one search worker and a compressed launcher under 8,192 bytes.
 
-依赖 Linux、支持 C++20 的 `g++`、Python 3 和 `xz`。
+Requires Linux, a C++20-capable `g++`, Python 3, and `xz`.
 
 ```sh
 make
 ./k8e
 ```
 
-也可运行 `./k8e_release`，首次启动会编译并缓存原生引擎。
+Use `./k8e_release` for the compact launcher, which compiles and caches the native engine on first run.
 
-测试：
+Tests:
 
 ```sh
 python3 -m pip install -r tests/requirements.txt
 make test
 ```
 
-基于 Ciekals 的 [c4ke](https://github.com/ciekals/c4ke)，搜索参考 Andrew Grant 的 [Ethereal](https://github.com/AndyGrant/Ethereal)。采用 [GPL-3.0](LICENSE) 许可。
+Based on Ciekals' [c4ke](https://github.com/ciekals/c4ke), with search inspired by Andrew Grant's [Ethereal](https://github.com/AndyGrant/Ethereal). Licensed under [GPL-3.0](LICENSE).
