@@ -43,7 +43,20 @@ i32 PHASE[] { 0, 1, 1, 2, 4, 0 },
 #define OFFSET_PST S(-24, -17)
 #define OFFSET_PASSER S(-29, -28)
 
+// Decode the packed weights once for the hot evaluation path.
+i32 EVAL_DATA[INDEX_EG], PSQT[TYPE_NONE][64];
+
 i32 get_data(i32 index) {
+    return EVAL_DATA[index];
+}
+
+void init_eval() {
     auto data = DATA_STR;
-    return data[index] + (data[index + INDEX_EG] - 32 << 16) - 32;
+    for (i32 i = 0; i < INDEX_EG; i++)
+        EVAL_DATA[i] = data[i] + (data[i + INDEX_EG] - 32 << 16) - 32;
+    for (i32 type = PAWN; type < TYPE_NONE; type++)
+        for (i32 square = 0; square < 64; square++)
+            PSQT[type][square] = MATERIAL[type] + (
+                get_data(type * 8 + square / 8 + INDEX_PST_RANK) +
+                get_data(type * 8 + square % 8 + INDEX_PST_FILE) + OFFSET_PST) * SCALE;
 }

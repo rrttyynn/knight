@@ -184,17 +184,15 @@ struct Board {
             eval += (POPCNT(pieces[BISHOP] & colors[color]) > 1) * BISHOP_PAIR -
                 POPCNT(pawns_us & (north(pawns_us) | pawns_us << 16)) * PAWN_DOUBLED;
 
+            // Specialize each piece type to fold its evaluation branches.
+#pragma GCC unroll 6
             for (i32 type = PAWN; type < TYPE_NONE; type++) {
                 u64 mask = pieces[type] & colors[color];
                 for (; mask;) {
                     i32 square = LSB(mask);
                     mask &= mask - 1;
                     phases[color] += PHASE[type];
-                    eval += MATERIAL[type] + (
-                        get_data(type * 8 + square / 8 + INDEX_PST_RANK) +
-                        get_data(type * 8 + square % 8 + INDEX_PST_FILE) +
-                        OFFSET_PST
-                    ) * SCALE;
+                    eval += PSQT[type][square];
 
                     if (!type) {
                         if (west(pawns_us) & pawns_us & 1ull << square)
