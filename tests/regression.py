@@ -3,6 +3,7 @@
 import random
 import subprocess
 import sys
+import time
 from pathlib import Path
 import chess
 import chess.engine
@@ -52,6 +53,11 @@ with chess.engine.SimpleEngine.popen_uci(exe) as engine:
                 infos = list(analysis)
                 result = analysis.wait()
             assert result.move in b.legal_moves
+    # A fixed move budget must not stop at the ordinary clock's soft limit.
+    started = time.monotonic()
+    result = engine.play(chess.Board(), chess.engine.Limit(time=0.1), game=object())
+    assert result.move in chess.Board().legal_moves
+    assert time.monotonic() - started >= 0.075, 'fixed movetime stopped early'
     for fen in ['7k/6Q1/6K1/8/8/8/8/8 b - - 0 1', '7k/5Q2/6K1/8/8/8/8/8 b - - 0 1']:
         assert not engine.play(chess.Board(fen), chess.engine.Limit(nodes=1000)).move
     b = chess.Board('7k/5K2/6Q1/8/8/8/8/8 w - - 0 1')

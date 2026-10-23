@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Reproducible paired single-core UCI match. Requires python-chess."""
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -41,7 +42,7 @@ def openings(pairs, seed):
         for san in LINES[i % len(LINES)].split():
             b.push_san(san)
         # Seeded variations prevent repeats after the first pass through the book.
-        for _ in range(2 * (i // len(LINES))):
+        for _ in range(min(12, 2 * (i // len(LINES)))):
             if b.is_game_over():
                 break
             b.push(rng.choice(list(b.legal_moves)))
@@ -57,6 +58,8 @@ def main():
     p.add_argument('--movetime', type=float, default=0.05)
     p.add_argument('--seed', type=int, default=20261020)
     p.add_argument('--start-pair', type=int, default=0)
+    p.add_argument('--opening-offset', type=int, default=0)
+    p.add_argument('--book', help='One FEN per line, shared by both colors')
     p.add_argument('--out', default='tests/results/match')
     args = p.parse_args()
     if hasattr(os, 'sched_getaffinity'):
@@ -69,10 +72,20 @@ def main():
     scores = []
     pairs = []
     started = time.monotonic()
+    stop_pair = args.opening_offset + args.start_pair + args.pairs
+    if args.book:
+        book = Path(args.book).read_bytes()
+        fens = book.decode().splitlines()
+        if len(fens) < stop_pair:
+            p.error('Opening book does not contain enough positions')
+        source = (chess.Board(fen) for fen in fens[:stop_pair])
+    else:
+        source = openings(stop_pair, args.seed)
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     pgn = open(args.out + '.pgn', 'w')
     try:
-        for pair, opening in enumerate(openings(args.start_pair + args.pairs, args.seed)):
+        for index, opening in enumerate(source):
+            pair = index - args.opening_offset
             if pair < args.start_pair:
                 continue
             pair_score = 0
@@ -108,6 +121,9 @@ def main():
             rates = [x / 2 for x in pairs]
             se = (sum((x - mean)**2 for x in rates) / (len(rates) - 1) / len(rates))**0.5 if len(rates) > 1 else 0.5
             stats = dict(games=n, wins=w, draws=d, losses=l, score=mean,
+                         requested_pairs=args.pairs, complete=len(pairs) == args.pairs,
+                         opening_offset=args.opening_offset,
+                         book_sha256=hashlib.sha256(book).hexdigest() if args.book else None,
                          score_ci95=[max(0, mean - 1.96*se), min(1, mean + 1.96*se)],
                          elo=400*math.log10(mean/(1-mean)) if 0 < mean < 1 else None,
                          pair_scores=pairs, seed=args.seed, start_pair=args.start_pair, nodes=args.nodes,

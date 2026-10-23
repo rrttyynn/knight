@@ -15,6 +15,7 @@ u64 perft(Board& board, i32 depth) {
 }
 
 void initialize() {
+    init_eval();
     mt19937_64 rng;
     for (i32 i = 0; i < 832; i++)
         KEYS[i / 64][i % 64] = rng(),
@@ -119,7 +120,10 @@ i32 main(i32 argc, char *argv[]) {
             u64 safe = time > 20 ? time - 20 : time;
             TIME_SOFT = min(safe / 22 + inc * 3 / 4, safe / 3);
             u64 hard = min(safe * 3 / 5, max(TIME_SOFT * 3, safe / 4));
-            if (fixed) hard = TIME_SOFT = movetime > 10 ? movetime - 10 : movetime;
+            if (fixed) {
+                hard = movetime > 10 ? movetime - 10 : movetime;
+                TIME_SOFT = 1ull << 60;
+            }
             if (infinite) hard = TIME_SOFT = 1ull << 60;
             TIME_LIMIT = TIME_START + hard;
             STOP = FALSE;
