@@ -18,4 +18,4 @@ python3 -m pip install -r tests/requirements.txt
 make test
 ```
 
-Based on Ciekals' [c4ke](https://github.com/ciekals/c4ke), with search inspired by Andrew Grant's [Ethereal](https://github.com/AndyGrant/Ethereal). Licensed under [GPL-3.0](LICENSE).
+Based on citrus610' [c4ke](https://github.com/citrus610/c4ke), with search inspired by Andrew Grant's [Ethereal](https://github.com/AndyGrant/Ethereal). Licensed under [GPL-3.0](LICENSE).
